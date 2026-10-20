@@ -1,0 +1,28 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+
+class Settings(BaseSettings):
+    # Configuración de la Aplicación
+    APP_NAME: str = Field(default="Estimador CAG")
+    APP_ENV: str = Field(default="development")
+    DEBUG: bool = Field(default=True)
+    
+    # Proveedores de LLM (API Keys y Modelos)
+    OPENAI_API_KEY: str | None = Field(default=None)
+    OPENAI_MODEL: str = Field(default="gpt-4o")
+    
+    ANTHROPIC_API_KEY: str | None = Field(default=None)
+    ANTHROPIC_MODEL: str = Field(default="claude-3-5-sonnet-latest")
+    
+    LLM_PROVIDER: str = Field(default="anthropic")
+    LLM_MODEL: str = "claude-haiku-4-5"
+
+    # Configuración del archivo .env con Pydantic V2
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        extra="ignore"  # Ignora variables extra del .env que no estén declaradas arriba
+    )
+
+# Instancia global para importar en el resto de la aplicación
+settings = Settings()
