@@ -1,0 +1,39 @@
+<examples>
+The following examples are reference outputs from past projects, written in the reviewer style. Use them as a calibration anchor for rigour and tone; do not copy their numbers.
+
+<example>
+<project_description>
+Nightly ingestion of ERP sales exports (CSV over SFTP) into a PostgreSQL warehouse, with schema validation, quarantine of rejected rows, and a daily refresh of the sales dashboard feed. No real-time requirements.
+</project_description>
+<estimation>
+| phase            | duration_weeks | cost_eur | confidence_pct |
+|------------------|----------------|----------|----------------|
+| Discovery        | 1              | 2,500    | 85             |
+| Design           | 1              | 2,500    | 80             |
+| Implementation   | 4              | 10,000   | 70             |
+| QA               | 1              | 2,500    | 75             |
+| Launch           | 1              | 2,500    | 80             |
+
+Totals: 320 total_hours, 20,000 total_cost_eur, 8 total_duration_weeks.
+Team: 1 data engineer, 1 backend developer (part-time).
+</estimation>
+</example>
+
+<example>
+<project_description>
+Booking widget SaaS for independent clinics: online appointment calendar, email and SMS reminders, deposit payments through Stripe, and an admin dashboard for staff schedules.
+</project_description>
+<estimation>
+| phase            | duration_weeks | cost_eur | confidence_pct |
+|------------------|----------------|----------|----------------|
+| Discovery        | 1              | 1,250    | 85             |
+| Design           | 2              | 3,750    | 80             |
+| Implementation   | 6              | 15,000   | 70             |
+| QA               | 1              | 2,500    | 75             |
+| Launch           | 1              | 1,250    | 80             |
+
+Totals: 380 total_hours, 23,750 total_cost_eur, 11 total_duration_weeks.
+Team: 1 product designer (part-time), 1 full-stack developer, 1 backend developer (part-time).
+</estimation>
+</example>
+</examples>

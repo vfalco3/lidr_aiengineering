@@ -204,3 +204,91 @@ def test_llm_failure_returns_500_with_detail() -> None:
 
     assert response.status_code == 500
     assert "provider down" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# prompt_version query parameter and reference projects
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_prompt_version_query_selects_template_and_is_echoed(
+    client: TestClient, recorded_calls: list[dict], version: str
+) -> None:
+    """``?prompt_version=`` picks the template, and the response reports that version."""
+    response = client.post(
+        "/api/v1/estimate", params={"prompt_version": version}, json=SAMPLE_PAYLOAD
+    )
+
+    assert response.status_code == 200
+    assert response.json()["prompt_version"] == version
+    expected_system, expected_user = render_estimation_prompt(
+        EstimationRequest(**SAMPLE_PAYLOAD), version=version
+    )
+    assert recorded_calls[0]["messages"] == [
+        {"role": "system", "content": expected_system},
+        {"role": "user", "content": expected_user},
+    ]
+
+
+def test_v2_system_prompt_differs_from_v1_on_the_wire(
+    client: TestClient, recorded_calls: list[dict]
+) -> None:
+    """The v1 and v2 requests send different system prompts to the model."""
+    client.post("/api/v1/estimate", params={"prompt_version": "v1"}, json=SAMPLE_PAYLOAD)
+    client.post("/api/v1/estimate", params={"prompt_version": "v2"}, json=SAMPLE_PAYLOAD)
+
+    v1_system = recorded_calls[0]["messages"][0]["content"]
+    v2_system = recorded_calls[1]["messages"][0]["content"]
+    assert v1_system != v2_system
+    assert "pragmatic estimation reviewer" in v2_system
+
+
+@pytest.mark.parametrize("bad_version", ["v3", "../v1", "V1", ""])
+def test_unknown_prompt_version_returns_422_without_calling_llm(
+    client: TestClient, recorded_calls: list[dict], bad_version: str
+) -> None:
+    """Unsupported or path-like versions are rejected by validation; the LLM is not called."""
+    response = client.post(
+        "/api/v1/estimate", params={"prompt_version": bad_version}, json=SAMPLE_PAYLOAD
+    )
+
+    assert response.status_code == 422
+    assert recorded_calls == []
+
+
+def test_reference_projects_reach_user_message_only(
+    client: TestClient, recorded_calls: list[dict]
+) -> None:
+    """Reference projects sent in the body appear in the user message, not the system one."""
+    payload = {
+        **SAMPLE_PAYLOAD,
+        "reference_projects": [
+            {
+                "name": "Inventory platform",
+                "description": "Stock tracking web app for a warehouse.",
+                "total_cost_eur": 12500,
+                "duration_weeks": 10,
+            }
+        ],
+    }
+
+    response = client.post("/api/v1/estimate", json=payload)
+
+    assert response.status_code == 200
+    system_message, user_message = recorded_calls[0]["messages"]
+    assert "<reference_projects>" in user_message["content"]
+    assert "Inventory platform" in user_message["content"]
+    assert "Inventory platform" not in system_message["content"]
+
+
+def test_invalid_reference_project_returns_422(
+    client: TestClient, recorded_calls: list[dict]
+) -> None:
+    """A reference project with an empty name is rejected by request validation."""
+    payload = {**SAMPLE_PAYLOAD, "reference_projects": [{"name": "", "description": "x"}]}
+
+    response = client.post("/api/v1/estimate", json=payload)
+
+    assert response.status_code == 422
+    assert recorded_calls == []

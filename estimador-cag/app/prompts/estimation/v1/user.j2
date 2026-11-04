@@ -1,6 +1,14 @@
 <project_description>
 {{ description }}
 </project_description>
+{% if reference_projects %}
+
+<reference_projects>
+Use these past projects as calibration only; do not copy their numbers.
+{% for project in reference_projects %}
+- {{ project.name }}: {{ project.description }}{% if project.total_cost_eur is not none %} Total cost: {{ project.total_cost_eur }} EUR.{% endif %}{% if project.duration_weeks is not none %} Duration: {{ project.duration_weeks }} weeks.{% endif %}{{ "\n" }}{% endfor %}
+</reference_projects>
+{% endif %}
 
 Project type: {{ project_type }}.
 Estimate this project following the rules above.
