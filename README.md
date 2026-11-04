@@ -10,5 +10,7 @@ uv run streamlit run app
 ##test
 uv run pytest app/tests/prompts tests -v
 
+uv venv --python 3.13 --force
+
 
 uv python pin 3.13
