@@ -155,18 +155,10 @@ def _invoke_llm(
     module-level import would make ``app.dependencies`` import itself while
     it is still partially initialised, which raises a circular import error.
 
-    :param system_prompt: System prompt sent to the model.
-    :type system_prompt: str
-    :param user_message: User message (raw transcription or extracted requirements).
-    :type user_message: str
-    :param model_override: Model name that overrides the configured default, or ``None``.
-    :type model_override: str | None
-    :param max_tokens: Maximum number of output tokens.
-    :type max_tokens: int
-    :param thinking_budget: Token budget for extended thinking, or ``None``.
-    :type thinking_budget: int | None
-    :return: The response dictionary returned by ``LLMWrapper.complete``.
-    :rtype: dict[str, Any]
+    It takes the system prompt, the user message (raw transcription or extracted
+    requirements), an optional model override, the maximum number of output tokens
+    and an optional thinking budget. It returns the dictionary produced by
+    ``LLMWrapper.complete``.
     """
     from app.dependencies import get_llm_wrapper
 

@@ -29,8 +29,7 @@ class Settings(BaseSettings):
     def LLM_MODEL(self) -> str:
         """Return the model name for the active provider.
 
-        :return: ``OPENAI_MODEL`` when the provider is ``openai``, otherwise ``ANTHROPIC_MODEL``.
-        :rtype: str
+        It returns ``OPENAI_MODEL`` when the provider is ``openai``, otherwise ``ANTHROPIC_MODEL``.
         """
         return  self.ANTHROPIC_MODEL
 
@@ -41,8 +40,6 @@ def get_settings() -> Settings:
 
     The settings are read once per process. Call ``get_settings.cache_clear()`` to reload them.
 
-    :return: The settings instance.
-    :rtype: Settings
     """
     return Settings()
 
