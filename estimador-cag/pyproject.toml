@@ -10,8 +10,13 @@ requires-python = ">=3.7"
 dependencies = [
     "anthropic>=0.26.0",
     "fastapi>=0.103.2",
+    "httpx>=0.24.1",
+    "litellm>=0.1.236",
     "pydantic-settings>=2.0.3",
     "python-dotenv>=0.21.1",
+    "redis>=5.0.8",
+    "sse-starlette>=0.10.3",
+    "streamlit>=1.23.1",
     "structlog>=23.1.0",
     "uvicorn[standard]>=0.22.0",
 ]
