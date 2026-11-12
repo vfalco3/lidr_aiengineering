@@ -128,6 +128,12 @@ La caché de Redis usa una clave SHA-256 que incluye el prompt de sistema, el me
 - **Importaciones rotas heredadas.** `app/services/evaluation.py` importa `StructureCheck` desde `schemas`, y ese nombre no existe. Ese módulo no está en la ruta de las peticiones, así que no bloquea la API.
 - **Respuesta sin coste.** El wrapper calcula `cost_usd`, pero `EstimationResponse` solo devuelve `text` y `prompt_version`.
 
+## Requisitos de Python
+
+El proyecto requiere **Python 3.11 o superior** (`requires-python = ">=3.11"` en `pyproject.toml`). El entorno de desarrollo usa Python 3.13, fijado en `.python-version`.
+
+Antes el campo declaraba `>=3.7`. Con ese rango, uv intentaba resolver las dependencias también para Python 3.7 y fallaba: las versiones recientes de `python-multipart` no son instalables en versiones antiguas (la 0.0.21 exige 3.10 y la 0.0.33 exige 3.11). Por eso `uv sync` devolvía el error *No solution found when resolving dependencies*. Subir el mínimo a 3.11 lo soluciona, y `uv.lock` se regenera al ejecutar `uv sync`.
+
 ## Cómo ejecutar
 
 ```powershell
