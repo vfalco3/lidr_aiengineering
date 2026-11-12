@@ -120,6 +120,16 @@ Si la petición indica un `model` concreto, el wrapper evita el router y llama a
 
 La caché de Redis usa una clave SHA-256 que incluye el prompt de sistema, el mensaje del usuario, el modelo y los parámetros. Por eso cambiar de versión de prompt (v1 a v2) no mezcla respuestas, y una respuesta de un modelo no se reutiliza para otro.
 
+## Sesiones multi-turno
+
+Además de las peticiones aisladas, la API ofrece sesiones de varios turnos, pensadas para ir refinando una estimación a lo largo de una conversación. Están implementadas en `app/routers/sessions.py` y `app/services/sessions.py`, y el system prompt se renderiza desde `app/prompts/session/v1/system.j2`.
+
+- **`POST /sessions`** crea una sesión y devuelve un `session_id` (UUID v4), con código 201.
+- **`GET /sessions/{session_id}`** devuelve los `project_metadata`, el número de turnos que quedan en la ventana deslizante y el tamaño de esa ventana (`max_turns`). Responde 404 si la sesión no existe.
+- **`POST /sessions/{session_id}/estimate`** recibe `multipart/form-data` con `transcript` (obligatorio) y `attachments` (opcional, varios archivos). Devuelve `{text, prompt_version}` con `prompt_version` fijado a `session-v1`.
+
+Cada sesión guarda por separado los metadatos del proyecto y la ventana de turnos, y el mensaje enviado al modelo tiene la forma `[system, *historial, usuario]`. Los tests de esta funcionalidad están en `tests/test_sessions_unit.py` (sin red ni proveedor) y `tests/test_sessions_api.py` (integración con un LLM simulado).
+
 ## Estado actual y puntos pendientes
 
 - **Configuración incompleta.** `dependencies.py` lee `PRIMARY_MODEL`, `FALLBACK_MODEL`, `OPENAI_API_KEY`, `REDIS_URL`, `LLM_TIMEOUT`, `LLM_RETRIES` y `CACHE_TTL`, pero `config.py` no las define. Una llamada real fallará antes de llegar al modelo.
