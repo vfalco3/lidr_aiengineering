@@ -6,19 +6,26 @@ readme = "README.md"
 authors = [
     { name = "Vicente Falco", email = "vicente.falco@gmail.com" }
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.26.0",
     "fastapi>=0.103.2",
     "httpx>=0.24.1",
     "litellm>=0.1.236",
     "pydantic-settings>=2.0.3",
+    "pypdf>=5.0.0",
     "python-dotenv>=0.21.1",
+    "python-multipart>=0.0.9",
     "redis>=5.0.8",
     "sse-starlette>=0.10.3",
     "streamlit>=1.23.1",
     "structlog>=23.1.0",
     "uvicorn[standard]>=0.22.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
 ]
 
 [project.scripts]

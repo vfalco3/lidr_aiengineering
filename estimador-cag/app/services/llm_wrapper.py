@@ -117,9 +117,21 @@ class LLMWrapper:
         model_override: str | None = None,
         max_tokens: int = 4000,
         thinking_budget: int | None = None,
+        history: list[dict[str, str]] | None = None,
     ) -> dict[str, Any]:
-        """Single LLM call with cache + (optional) fallback. Returns the legacy dict shape
-        plus ``cache_hit`` and ``cost_usd`` fields.
+        """Una sola llamada al LLM con caché y, si procede, fallback. Devuelve la forma de diccionario
+        heredada más los campos ``cache_hit`` y ``cost_usd``.
+
+        ``history`` contiene los turnos anteriores usuario/asistente. Se envían entre el
+        system prompt y el mensaje nuevo del usuario, y forman parte de la clave de caché.
+
+        :param system_prompt: System prompt de esta llamada.
+        :param user_message: Mensaje nuevo del usuario para esta llamada.
+        :param model_override: Modelo que se salta el router, o ``None`` para usar el router.
+        :param max_tokens: Límite de tokens de salida.
+        :param thinking_budget: Presupuesto de razonamiento para modelos de Anthropic, o ``None``.
+        :param history: Mensajes ``{"role", "content"}`` anteriores, del más antiguo al más reciente, o ``None``.
+        :returns: El diccionario de respuesta normalizado, con ``cache_hit`` añadido.
         """
         cache_key_model = model_override or self.primary_model
         cache_key = EstimationCache.make_key(
@@ -128,6 +140,7 @@ class LLMWrapper:
             model=cache_key_model,
             max_tokens=max_tokens,
             thinking_budget=thinking_budget,
+            history=history,
         )
         cached = self.cache.get(cache_key)
         if cached:
@@ -135,6 +148,7 @@ class LLMWrapper:
 
         messages = [
             {"role": "system", "content": system_prompt},
+            *(history or []),
             {"role": "user", "content": user_message},
         ]
         kwargs = self._build_call_kwargs(

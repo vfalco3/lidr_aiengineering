@@ -7,6 +7,7 @@ from functools import lru_cache
 from app.config import get_settings
 from app.services.cache import EstimationCache
 from app.services.llm_wrapper import LLMWrapper
+from app.services.sessions import SessionStore
 
 
 @lru_cache
@@ -27,3 +28,8 @@ def get_llm_wrapper() -> LLMWrapper:
         num_retries=settings.LLM_RETRIES,
         cache=get_cache(),
     )
+
+@lru_cache
+def get_session_store() -> SessionStore:
+    """Devuelve el almacén de sesiones del proceso, dimensionado con ``MAX_TURNS``."""
+    return SessionStore(max_turns=get_settings().MAX_TURNS)

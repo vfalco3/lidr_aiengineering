@@ -38,17 +38,32 @@ class EstimationCache:
         model: str,
         max_tokens: int,
         thinking_budget: int | None,
+        history: list[dict[str, Any]] | None = None,
     ) -> str:
-        payload = json.dumps(
-            {
-                "system_prompt": system_prompt,
-                "user_message": user_message,
-                "model": model,
-                "max_tokens": max_tokens,
-                "thinking_budget": thinking_budget,
-            },
-            sort_keys=True,
-        )
+        """Construye la clave de caché determinista de una petición al LLM.
+
+        El campo ``history`` se añade a la clave solo cuando no está vacío, así que las
+        claves de las peticiones de un solo turno siguen siendo idénticas a las de antes
+        de que existieran las sesiones.
+
+        :param system_prompt: System prompt completo enviado al modelo.
+        :param user_message: Mensaje del usuario enviado al modelo.
+        :param model: Nombre del modelo usado en la llamada.
+        :param max_tokens: Límite de tokens de salida.
+        :param thinking_budget: Presupuesto de razonamiento, o ``None``.
+        :param history: Turnos anteriores enviados antes del mensaje del usuario, o ``None``.
+        :returns: Una clave con la forma ``estimation:<digest hexadecimal SHA-256>``.
+        """
+        fields: dict[str, Any] = {
+            "system_prompt": system_prompt,
+            "user_message": user_message,
+            "model": model,
+            "max_tokens": max_tokens,
+            "thinking_budget": thinking_budget,
+        }
+        if history:
+            fields["history"] = history
+        payload = json.dumps(fields, sort_keys=True)
         digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
         return f"estimation:{digest}"
 

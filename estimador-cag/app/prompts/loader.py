@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import get_args
+from typing import Any, get_args
 
 import structlog
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
@@ -99,3 +99,25 @@ def render_estimation_prompt(
         user_hash=_short_digest(user),
     )
     return system, user
+
+
+def render_session_system_prompt(metadata: Any | None) -> str:
+    """Renderiza el system prompt de una sesión de varios turnos a partir de sus metadatos del proyecto.
+
+    El bloque ``<project_metadata>`` solo se renderiza cuando se conoce al menos un
+    hecho. En la primera llamada de una sesión el bloque no aparece, porque todavía
+    no hay nada que inyectar.
+
+    :param metadata: Un :class:`~app.services.sessions.ProjectMetadata`, o ``None``.
+        Vale cualquier objeto que exponga ``is_empty()`` y los cuatro atributos de metadatos.
+    :returns: El texto del system prompt, listo para enviarse con el rol ``system``.
+    """
+    project: dict[str, Any] | None = None
+    if metadata is not None and not metadata.is_empty():
+        project = {
+            "project_name": metadata.project_name,
+            "assumed_team_size": metadata.assumed_team_size,
+            "mentioned_technologies": list(metadata.mentioned_technologies),
+            "agreed_scope": metadata.agreed_scope,
+        }
+    return _env.get_template("session/v1/system.j2").render(project_metadata=project)

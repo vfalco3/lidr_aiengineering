@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     # Proveedor por defecto activo ('openai' o 'anthropic')
     LLM_PROVIDER: str = Field(default="anthropic")
 
+    # Ventana deslizante de sesiones: número de pares usuario+asistente que se envían al LLM
+    MAX_TURNS: int = Field(default=6, ge=1)
+
     # Configuración del archivo .env con Pydantic V2
     model_config = SettingsConfigDict(
         env_file=".env",

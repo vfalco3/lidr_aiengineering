@@ -1,16 +1,22 @@
-"""Streamlit chat UI for the estimator.
+"""Cliente Streamlit para las sesiones de estimación de varios turnos.
 
-Streamlit acts as an HTTP client of the FastAPI service: it POSTs to
-``/api/v1/estimate/stream`` and renders the SSE chunks live with
-``st.write_stream``. The endpoint URL is read from ``ESTIMATOR_API_BASE_URL``
-(loaded from the same ``.env`` as the API), so the same UI works against a
-local uvicorn or against docker-compose.
+El cliente es un cliente HTTP del servicio FastAPI:
+
+* Al cargar por primera vez llama a ``POST /sessions`` y guarda el ``session_id``
+  en ``st.session_state``.
+* Cada estimación es una petición ``multipart/form-data`` a
+  ``POST /sessions/{session_id}/estimate`` con la transcripción y los adjuntos opcionales.
+* El panel de la barra lateral muestra el ``project_metadata`` que devuelve
+  ``GET /sessions/{session_id}``, de modo que se ve la separación entre metadatos
+  (lo que se sabe) e historial (lo que se dijo) mientras avanza la conversación.
+* «Nueva conversación» crea una sesión nueva y limpia el chat local.
+
+La URL base se lee de ``ESTIMATOR_API_BASE_URL`` (cargada desde ``.env``).
 """
 
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
 
 import httpx
 import streamlit as st
@@ -18,94 +24,143 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_BASE_URL = os.getenv("ESTIMATOR_API_BASE_URL", "http://localhost:8000")
-STREAM_ENDPOINT = f"{API_BASE_URL.rstrip('/')}/api/v1/estimate/stream"
+API_BASE_URL = os.getenv("ESTIMATOR_API_BASE_URL", "http://localhost:8000").rstrip("/")
+SESSIONS_URL = f"{API_BASE_URL}/sessions"
+ACCEPTED_TYPES = ["txt", "md", "pdf"]
+REQUEST_TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 
-st.set_page_config(page_title="Software Estimator", page_icon="📊")
+st.set_page_config(page_title="Software Estimator", page_icon="📊", layout="wide")
 st.title("Software Estimator")
 st.caption(
-    "Paste a meeting transcription. The answer streams token by token from the "
-    "FastAPI service over Server-Sent Events."
+    "Describe the project or paste the meeting transcript, optionally attach documents, "
+    "and send. Each message is answered in the context of the same session."
 )
 
 
-def stream_estimation(transcription: str) -> Iterator[str]:
-    """POST to the SSE endpoint and yield text chunks as they arrive.
+def create_session() -> str:
+    """Crea una sesión en el servidor y devuelve su identificador.
 
-    Per the SSE spec, a single message with internal newlines is serialised as
-    multiple ``data:`` lines, and the client must join them with ``\\n`` to
-    reconstruct the original payload. A blank line terminates the message.
+    :returns: El ``session_id`` que devuelve ``POST /sessions``.
+    :raises httpx.HTTPError: Si no se puede contactar con el servicio o rechaza la petición.
     """
-    payload = {"transcription": transcription}
-    with httpx.stream(
-        "POST",
-        STREAM_ENDPOINT,
-        json=payload,
-        timeout=httpx.Timeout(120.0, connect=10.0),
-        headers={"Accept": "text/event-stream"},
-    ) as response:
+    response = httpx.post(SESSIONS_URL, timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    return response.json()["session_id"]
+
+
+def fetch_session_state(session_id: str) -> dict | None:
+    """Lee los metadatos y el número de turnos de una sesión.
+
+    :param session_id: Identificador de la sesión a leer.
+    :returns: El cuerpo JSON de ``GET /sessions/{session_id}``, o ``None`` si la llamada falla.
+    """
+    try:
+        response = httpx.get(f"{SESSIONS_URL}/{session_id}", timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
-        current_event = "token"
-        data_lines: list[str] = []
-        for raw_line in response.iter_lines():
-            if raw_line == "":
-                if data_lines:
-                    payload_text = "\n".join(data_lines)
-                    data_lines = []
-                    if current_event == "token":
-                        yield payload_text
-                    elif current_event == "error":
-                        yield f"\n\n[error] {payload_text}"
-                    elif current_event == "done":
-                        return
-                current_event = "token"
-                continue
-            if raw_line.startswith("event:"):
-                current_event = raw_line[6:].strip()
-            elif raw_line.startswith("data:"):
-                # The SSE spec defines exactly one space after `data:` as
-                # framing, not payload — preserve any further whitespace.
-                data_lines.append(
-                    raw_line[6:] if raw_line.startswith("data: ") else raw_line[5:]
-                )
+    except httpx.HTTPError:
+        return None
+    return response.json()
+
+
+def send_estimation(session_id: str, transcript: str, uploads: list) -> str:
+    """Envía la transcripción y los adjuntos al endpoint de la sesión.
+
+    La petición es siempre ``multipart/form-data``. La transcripción se envía como
+    campo de formulario, y cada archivo subido como una parte ``attachments``.
+
+    :param session_id: Identificador de la sesión a continuar.
+    :param transcript: Texto escrito en el formulario.
+    :param uploads: Archivos devueltos por ``st.file_uploader``.
+    :returns: El texto de la estimación de la respuesta.
+    :raises httpx.HTTPStatusError: Si el servicio responde con un código de error.
+    :raises httpx.HTTPError: Si no se puede contactar con el servicio.
+    """
+    fields: list[tuple[str, object]] = [("transcript", (None, transcript))]
+    for upload in uploads:
+        content_type = upload.type or "application/octet-stream"
+        fields.append(("attachments", (upload.name, upload.getvalue(), content_type)))
+
+    response = httpx.post(
+        f"{SESSIONS_URL}/{session_id}/estimate",
+        files=fields,
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json()["text"]
+
+
+def start_new_conversation() -> None:
+    """Crea una sesión nueva y limpia el historial del chat local."""
+    st.session_state.session_id = create_session()
+    st.session_state.messages = []
 
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "session_id" not in st.session_state:
+    try:
+        start_new_conversation()
+    except httpx.HTTPError as exc:
+        st.error(f"Could not create a session at `{SESSIONS_URL}`: {exc}")
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Paste your meeting transcription here..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+with st.form("estimate_form", clear_on_submit=True):
+    transcript = st.text_area(
+        "Transcript or project notes",
+        height=180,
+        placeholder="Paste the meeting transcript or describe the project...",
+    )
+    uploads = st.file_uploader(
+        "Supporting documents (optional)",
+        type=ACCEPTED_TYPES,
+        accept_multiple_files=True,
+    )
+    submitted = st.form_submit_button("Estimate")
 
-    with st.chat_message("assistant"):
-        placeholder = st.empty()
-        full_response = ""
-        try:
-            for chunk in stream_estimation(prompt):
-                full_response += chunk
-                placeholder.markdown(full_response + "▍")
-            placeholder.markdown(full_response)
-        except httpx.HTTPError as exc:
-            full_response = f"Could not reach the estimator at `{STREAM_ENDPOINT}`: {exc}"
-            placeholder.error(full_response)
-        response = full_response
-
-    st.session_state.messages.append({"role": "assistant", "content": response})
+if submitted and "session_id" in st.session_state:
+    if not transcript.strip():
+        st.warning("Write a transcript or project notes before estimating.")
+    else:
+        attachment_names = [upload.name for upload in uploads]
+        user_label = transcript
+        if attachment_names:
+            user_label += "\n\n_Attachments: " + ", ".join(attachment_names) + "_"
+        st.session_state.messages.append({"role": "user", "content": user_label})
+        with st.chat_message("user"):
+            st.markdown(user_label)
+        with st.chat_message("assistant"):
+            try:
+                with st.spinner("Estimating..."):
+                    answer = send_estimation(st.session_state.session_id, transcript, uploads)
+                st.markdown(answer)
+            except httpx.HTTPStatusError as exc:
+                answer = f"The service rejected the request ({exc.response.status_code}): {exc.response.text}"
+                st.error(answer)
+            except httpx.HTTPError as exc:
+                answer = f"Could not reach the estimator at `{SESSIONS_URL}`: {exc}"
+                st.error(answer)
+        st.session_state.messages.append({"role": "assistant", "content": answer})
 
 
 with st.sidebar:
-    st.header("Service")
-    st.code(STREAM_ENDPOINT, language="text")
-    primary = os.getenv("PRIMARY_MODEL", "gpt-4o-mini")
-    fallback = os.getenv("FALLBACK_MODEL", "claude-haiku-4-5-20251001")
-    st.markdown(f"**Primary model:** `{primary}`")
-    st.markdown(f"**Fallback model:** `{fallback}`")
-    st.markdown(f"**Cache TTL:** `{os.getenv('CACHE_TTL', '86400')}s`")
-    if st.button("Clear chat history"):
-        st.session_state.messages = []
+    st.header("Session")
+    if "session_id" in st.session_state:
+        st.code(st.session_state.session_id, language="text")
+        state = fetch_session_state(st.session_state.session_id)
+        if state is None:
+            st.warning("Session state is not available.")
+        else:
+            st.caption(f"Turns kept: {state['turns']} of {state['max_turns']}")
+            with st.expander("project_metadata", expanded=True):
+                st.json(state["project_metadata"])
+    if st.button("Nueva conversación"):
+        try:
+            start_new_conversation()
+        except httpx.HTTPError as exc:
+            st.error(f"Could not create a session: {exc}")
         st.rerun()
+    st.markdown("---")
+    st.markdown(f"**API:** `{API_BASE_URL}`")
