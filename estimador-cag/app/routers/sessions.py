@@ -10,7 +10,9 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -23,6 +25,7 @@ from app.schemas.estimation import EstimationResponse
 from app.services.attachments import AttachmentError, build_transcript_with_attachments, extract_text
 from app.services.llm_wrapper import LLMWrapper
 from app.services.metadata_extractor import update_metadata
+from app.services.observability import build_turn_observation
 from app.services.sessions import ProjectMetadata, SessionStore
 
 log = structlog.get_logger()
@@ -46,6 +49,10 @@ class SessionStateResponse(BaseModel):
     turns: int = Field(description="Número de turnos que quedan en la ventana deslizante.")
     max_turns: int = Field(description="Tamaño de la ventana deslizante.")
     project_metadata: ProjectMetadata
+    last_turn_observation: dict[str, Any] | None = Field(
+        default=None,
+        description="Evento ``turn_observed`` del último turno, o null si aún no hubo ninguno.",
+    )
 
 
 def _require_session(session_id: str, store: SessionStore):
@@ -95,6 +102,7 @@ def get_session(
         turns=session.history.turn_count,
         max_turns=session.history.max_turns,
         project_metadata=session.metadata,
+        last_turn_observation=session.last_observation,
     )
 
 
@@ -138,6 +146,7 @@ def estimate_in_session(
     system_prompt = render_session_system_prompt(session.metadata)
     history = session.history.turns()
 
+    started = time.perf_counter()
     try:
         result = wrapper.complete(
             system_prompt=system_prompt,
@@ -145,13 +154,29 @@ def estimate_in_session(
             history=history,
             max_tokens=ESTIMATION_MAX_TOKENS,
         )
+        latency_ms = int((time.perf_counter() - started) * 1000)
     except Exception as exc:  # noqa: BLE001 — cualquier fallo del proveedor se traduce a 500
         log.error("session_estimation_failed", session_id=session_id, error=str(exc))
         raise HTTPException(status_code=500, detail=f"La llamada al LLM falló: {exc}") from exc
 
     text = result["estimation"]
+    turn_index = session.history.turn_count + 1
     session.history.add_turn(user_message, text)
     session.metadata = update_metadata(session.metadata, user_message, text)
+    observation = build_turn_observation(
+        session_id=session_id,
+        turn_index=turn_index,
+        enriched_transcript_chars=len(user_message),
+        attachments_total_chars=sum(len(body) for _, body in parsed),
+        messages_in_window=len(session.history.turns()),
+        anchors_count=0,  # Esta base no tiene anclas heurísticas: siempre 0.
+        summary_chars=0,  # Tampoco hay summarizer: siempre 0.
+        result=result,
+        latency_ms=latency_ms,
+        last_resolved_tier=None,  # Tampoco hay tier dinámico.
+    )
+    session.last_observation = observation
+    log.info("turn_observed", **observation)
     log.info(
         "session_turn_completed",
         session_id=session_id,

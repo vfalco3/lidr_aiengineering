@@ -31,6 +31,7 @@ from __future__ import annotations
 import threading
 import uuid
 from dataclasses import dataclass, field
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -147,11 +148,13 @@ class Session:
     :ivar session_id: Identificador devuelto por ``POST /sessions``.
     :ivar history: Ventana deslizante de turnos recientes.
     :ivar metadata: Hechos extraídos de la conversación hasta el momento.
+    :ivar last_observation: Evento ``turn_observed`` del último turno, o ``None`` si aún no hubo ninguno.
     """
 
     session_id: str
     history: ConversationHistory
     metadata: ProjectMetadata = field(default_factory=ProjectMetadata)
+    last_observation: dict[str, Any] | None = None
 
 
 class SessionStore:
