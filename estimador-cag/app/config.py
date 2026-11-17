@@ -18,6 +18,17 @@ class Settings(BaseSettings):
     # Proveedor por defecto activo ('openai' o 'anthropic')
     LLM_PROVIDER: str = Field(default="anthropic")
 
+    # Wrapper del LLM: modelos, claves, tiempos de espera y reintentos.
+    PRIMARY_MODEL: str = Field(default="claude-haiku-4-5")
+    FALLBACK_MODEL: str = Field(default="gpt-4o-mini")
+    OPENAI_API_KEY: str | None = Field(default=None)
+    LLM_TIMEOUT: int = Field(default=60, ge=1)
+    LLM_RETRIES: int = Field(default=2, ge=0)
+
+    # Caché exacta: Redis debe estar levantado (p. ej. docker run -p 6379:6379 redis:7).
+    REDIS_URL: str = Field(default="redis://localhost:6379/0")
+    CACHE_TTL: int = Field(default=86400, ge=1)
+
     # Ventana deslizante de sesiones: número de pares usuario+asistente que se envían al LLM
     MAX_TURNS: int = Field(default=6, ge=1)
 

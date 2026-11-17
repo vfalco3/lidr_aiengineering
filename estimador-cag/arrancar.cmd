@@ -13,9 +13,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-
-start "Estimador API" cmd /k uv run uvicorn app.main:app --reload
-start "Estimador UI" cmd /k uv run streamlit run app/streamlit_app.py
+uv run python scripts/dev.py --port 8080
 
 echo API en http://127.0.0.1:8000 (docs en /docs)
 echo Interfaz Streamlit en http://localhost:8501
