@@ -93,9 +93,9 @@ def test_first_transcript_carries_a_repeat_nonce_to_avoid_cache_hits():
     service = FakeService()
     run_stress(service, scenarios=["growing"], sizes_kb=[], repeats=2)
 
-    first_turns = [call[1] for call in service.estimate_calls if "[ejecución growing-r" in call[1]]
-    assert any("growing-r1" in text for text in first_turns)
-    assert any("growing-r2" in text for text in first_turns)
+    first_turns = [call[1] for call in service.estimate_calls if "[ejecución growing-" in call[1]]
+    assert any("-r1] " in text for text in first_turns)
+    assert any("-r2] " in text for text in first_turns)
 
 
 def test_attachment_baseline_has_no_recall_and_sized_runs_have_full_recall():
@@ -188,3 +188,19 @@ def test_rest_client_raises_on_http_error():
 
     with pytest.raises(httpx.HTTPStatusError):
         RestStressClient(http).create_session()
+
+
+def test_on_row_receives_every_row_in_order():
+    received: list[dict] = []
+
+    rows = run_stress(
+        FakeService(),
+        scenarios=["growing"],
+        sizes_kb=[0, 5],
+        repeats=1,
+        on_row=received.append,
+    )
+
+    assert len(received) == len(rows) == MAX_PROFILE_TURNS + 2
+    assert [row["turn_index"] for row in received[:MAX_PROFILE_TURNS]] == list(range(1, MAX_PROFILE_TURNS + 1))
+    assert received[-1]["scenario"] == "attachment"

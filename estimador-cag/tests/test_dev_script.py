@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.dev import check_llm_key, has_llm_key, parse_env_file
+from scripts.dev import build_uvicorn_command, check_llm_key, has_llm_key, parse_env_file
 
 
 def test_parse_env_file_ignores_comments_blanks_and_strips_quotes():
@@ -46,3 +46,14 @@ def test_environment_variable_overrides_empty_dotenv_value(tmp_path: Path):
 
 def test_check_llm_key_without_dotenv_or_environment_is_false(tmp_path: Path):
     assert check_llm_key(tmp_path, {}) is False
+
+
+def test_uvicorn_command_has_no_reload_by_default():
+    command = build_uvicorn_command(8080, reload=False)
+
+    assert "--reload" not in command
+    assert command[command.index("--port") + 1] == "8080"
+
+
+def test_uvicorn_command_adds_reload_only_when_requested():
+    assert "--reload" in build_uvicorn_command(8080, reload=True)

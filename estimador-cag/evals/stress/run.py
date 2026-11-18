@@ -25,7 +25,8 @@ from __future__ import annotations
 import argparse
 import csv
 import statistics
-from collections.abc import Sequence
+import uuid
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -143,6 +144,10 @@ class RestStressClient:
         return response.json()
 
 
+#: Identificador único de cada lanzamiento. Evita aciertos de caché contra respuestas de ejecuciones anteriores.
+RUN_ID = uuid.uuid4().hex[:8]
+
+
 def _with_nonce(transcript: str, label: str, repeat: int) -> str:
     """Antepone una etiqueta de ejecución a la transcripción para evitar aciertos de caché entre repeticiones.
 
@@ -151,7 +156,7 @@ def _with_nonce(transcript: str, label: str, repeat: int) -> str:
     :param repeat: Número de repetición, desde 1.
     :returns: La transcripción con el prefijo ``[ejecución <label>-r<repeat>]``.
     """
-    return f"[ejecución {label}-r{repeat}] {transcript}"
+    return f"[ejecución {label}-{RUN_ID}-r{repeat}] {transcript}"
 
 
 def _observation(state: dict[str, Any]) -> dict[str, Any]:
@@ -201,6 +206,7 @@ def run_profile(
     repeat: int,
     latency_budget_ms: int,
     cost_budget_usd: float,
+    on_row: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Ejecuta un perfil completo de :data:`MAX_PROFILE_TURNS` turnos en una sesión nueva.
 
@@ -250,6 +256,9 @@ def run_profile(
             "marker_recall": None,
         }
         rows.append(row)
+        if on_row is not None:
+            on_row(row)
+        print(f"  turno {turn_index}/{len(scenario.transcripts)} · {row['latency_ms']} ms · {row['cost_usd']} USD", flush=True)
     return rows
 
 
@@ -305,6 +314,7 @@ def run_stress(
     repeats: int,
     latency_budget_ms: int = DEFAULT_LATENCY_BUDGET_MS,
     cost_budget_usd: float = DEFAULT_COST_BUDGET_USD,
+    on_row: Callable[[dict[str, Any]], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Ejecuta todos los perfiles y tamaños de adjunto, tantas veces como indique ``repeats``.
 
@@ -329,6 +339,7 @@ def run_stress(
     rows: list[dict[str, Any]] = []
     for repeat in range(1, repeats + 1):
         for name in scenarios:
+            print(f"[repetición {repeat}/{repeats}] perfil {name}", flush=True)
             rows.extend(
                 run_profile(
                     client,
@@ -336,18 +347,21 @@ def run_stress(
                     repeat=repeat,
                     latency_budget_ms=latency_budget_ms,
                     cost_budget_usd=cost_budget_usd,
+                    on_row=on_row,
                 )
             )
         for size in sizes_kb:
-            rows.append(
-                run_attachment(
-                    client,
-                    size_kb=size,
-                    repeat=repeat,
-                    latency_budget_ms=latency_budget_ms,
-                    cost_budget_usd=cost_budget_usd,
-                )
+            print(f"[repetición {repeat}/{repeats}] adjunto {size} KiB", flush=True)
+            row = run_attachment(
+                client,
+                size_kb=size,
+                repeat=repeat,
+                latency_budget_ms=latency_budget_ms,
+                cost_budget_usd=cost_budget_usd,
             )
+            rows.append(row)
+            if on_row is not None:
+                on_row(row)
     return rows
 
 
@@ -422,15 +436,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     http = httpx.Client(base_url=args.http, timeout=args.timeout) if args.http else _in_process_http()
     client = RestStressClient(http)
+    output = Path(args.output)
+    collected: list[dict[str, Any]] = []
+
+    def checkpoint(row: dict[str, Any]) -> None:
+        """Añade la fila y reescribe el CSV, para no perder datos si se interrumpe la ejecución."""
+        collected.append(row)
+        write_csv(collected, output)
+
     rows = run_stress(
         client,
+        on_row=checkpoint,
         scenarios=_parse_names(args.scenarios),
         sizes_kb=_parse_int_list(args.attachment_sizes),
         repeats=args.repeats,
         latency_budget_ms=args.latency_budget_ms,
         cost_budget_usd=args.cost_budget_usd,
     )
-    write_csv(rows, Path(args.output))
+    write_csv(rows, output)
     print(f"{len(rows)} filas escritas en {args.output}")
     return 0
 

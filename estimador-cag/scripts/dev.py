@@ -128,12 +128,16 @@ def stop_redis(root: Path) -> None:
     subprocess.run(["docker", "compose", "stop", "redis"], cwd=root, check=False)
 
 
-def run_api(root: Path, port: int) -> int:
-    """Arranca uvicorn en primer plano con recarga automática.
+def build_uvicorn_command(port: int, reload: bool) -> list[str]:
+    """Construye la orden de uvicorn.
 
-    :param root: Raíz del proyecto; uvicorn se ejecuta desde aquí para encontrar ``app/``.
+    Sin recarga, el proceso no se reinicia al cambiar archivos. Esto importa porque el
+    almacén de sesiones vive en memoria: un reinicio borra todas las sesiones y el
+    harness recibe 404 a mitad de una ejecución.
+
     :param port: Puerto local de la API.
-    :returns: El código de salida de uvicorn.
+    :param reload: ``True`` para recargar automáticamente al cambiar código.
+    :returns: Los argumentos para ``subprocess``.
     """
     command = [
         sys.executable,
@@ -144,9 +148,21 @@ def run_api(root: Path, port: int) -> int:
         "127.0.0.1",
         "--port",
         str(port),
-        "--reload",
     ]
-    return subprocess.call(command, cwd=root)
+    if reload:
+        command.append("--reload")
+    return command
+
+
+def run_api(root: Path, port: int, reload: bool = False) -> int:
+    """Arranca uvicorn en primer plano.
+
+    :param root: Raíz del proyecto; uvicorn se ejecuta desde aquí para encontrar ``app/``.
+    :param port: Puerto local de la API.
+    :param reload: ``True`` para recargar automáticamente al cambiar código.
+    :returns: El código de salida de uvicorn.
+    """
+    return subprocess.call(build_uvicorn_command(port, reload), cwd=root)
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -158,6 +174,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=8000, help="Puerto de la API. Por defecto 8000.")
     parser.add_argument("--no-redis", action="store_true", help="No usar Docker; Redis ya está en marcha.")
     parser.add_argument("--stop-redis", action="store_true", help="Al salir, para el contenedor de Redis.")
+    parser.add_argument("--reload", action="store_true", help="Recarga la API al cambiar código. Borra las sesiones en memoria.")
     return parser
 
 
@@ -182,7 +199,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"API en http://127.0.0.1:{args.port} (Ctrl+C para detener).")
     try:
-        return run_api(ROOT, args.port)
+        return run_api(ROOT, args.port, reload=args.reload)
     except KeyboardInterrupt:
         return 0
     finally:
